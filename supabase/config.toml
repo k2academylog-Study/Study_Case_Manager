@@ -1,0 +1,34 @@
+project_id = "study-case-manager"
+
+[api]
+enabled = true
+schemas = ["public", "storage", "graphql_public"]
+max_rows = 1000
+
+[db]
+major_version = 17
+
+[db.seed]
+enabled = true
+sql_paths = ["./seed.sql"]
+
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["http://localhost:3000/auth/confirm"]
+enable_signup = false
+enable_anonymous_sign_ins = false
+minimum_password_length = 12
+
+[auth.email]
+enable_signup = false
+enable_confirmations = true
+
+[auth.email.template.invite]
+subject = "Set up your Study Case Manager account"
+content_path = "./supabase/templates/invite.html"
+
+[auth.email.template.recovery]
+subject = "Reset your Study Case Manager password"
+content_path = "./supabase/templates/recovery.html"
+

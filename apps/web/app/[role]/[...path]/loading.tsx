@@ -1,0 +1,1 @@
+export default function Loading(){return <main style={{padding:24,maxWidth:1200,margin:"auto"}} aria-label="Loading academic workspace"><div className="skeleton"/><div className="stats-grid" style={{marginTop:15}}>{[0,1,2,3].map(i=><div className="skeleton" key={i}/>)}</div></main>;}

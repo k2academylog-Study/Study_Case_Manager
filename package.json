@@ -1,0 +1,1 @@
+{"name":"study-case-manager","private":true,"workspaces":["apps/web"],"scripts":{"dev":"npm run dev -w @scm/web","build":"npm run build -w @scm/web","start":"npm run start -w @scm/web","typecheck":"npm run typecheck -w @scm/web","test":"npm run test -w @scm/web","test:e2e":"npm run test:e2e -w @scm/web"}}
