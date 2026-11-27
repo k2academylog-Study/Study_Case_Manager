@@ -1,0 +1,18 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "services": {
+    "ai-service": { "root": "apps/ai-service", "framework": "fastapi" },
+    "web": {
+      "root": "apps/web",
+      "framework": "nextjs",
+      "bindings": [
+        { "type": "service", "service": "ai-service", "format": "url", "env": "AI_SERVICE_URL" }
+      ]
+    }
+  },
+  "rewrites": [
+    { "source": "/api/v1/webhooks/whatsapp", "destination": { "service": "ai-service" } },
+    { "source": "/api/v1/webhooks/email", "destination": { "service": "ai-service" } },
+    { "source": "/(.*)", "destination": { "service": "web" } }
+  ]
+}

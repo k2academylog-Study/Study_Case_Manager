@@ -51,5 +51,5 @@ Install the Playwright Chromium browser with `npx playwright install chromium` o
 
 ## Deployment
 
-[Deployment and operations](docs/deployment.md) covers Supabase, Vercel, Railway or Render, Redis, Meta, Resend, and a controlled integration check for each provider.
+Deploy from the repository root using the two services in [vercel.json](vercel.json). Run `vercel dev --local` to test them together. [Deployment and operations](docs/deployment.md) covers the public callbacks, private AI binding, external Celery worker and Beat scheduler, and provider setup.
 

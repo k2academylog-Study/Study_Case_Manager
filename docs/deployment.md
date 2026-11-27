@@ -12,15 +12,19 @@
 
 ## Vercel
 
-Import the GitHub repository in a Vercel project. Choose `apps/web` as the project root and Next.js as the framework. Keep workspace dependency access enabled. Add `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` for account administration, `AI_BACKEND_URL`, `INTERNAL_API_SECRET`, and optional `CONTACT_EMAIL`. Select an HTTPS custom domain and update Auth redirects to match. Confirm that the sign-in and report endpoints use that origin.
+Import the repository as one project. Set the Vercel Root Directory to the repository root. The root [vercel.json](../vercel.json) defines the Next.js web service and the FastAPI AI service. Vercel discovers the FastAPI application in `apps/ai-service/app/main.py`.
 
-[Vercel monorepos](https://vercel.com/docs/monorepos)
+The public domain serves Next.js, including the authenticated `/api/ai/*` proxy. Only the exact WhatsApp and email callback paths listed below route directly to FastAPI. All other FastAPI routes, including `/health` and `/api/v1/internal/delivery-tick`, are accessible through the internal service network. Webhook providers must be able to reach their registered callbacks through any deployment protection configured on the domain.
 
-## Railway or Render
+Vercel injects `AI_SERVICE_URL` into the web service at request time. Leave this variable out of the dashboard and environment files. For standalone Next.js and Uvicorn development, `AI_BACKEND_URL` supplies the local backend URL. Run `vercel dev --local` from the repository root to test both services with a generated binding.
 
-Deploy `apps/ai-service` with its Dockerfile. Add its database, Redis, Supabase, internal API, OpenAI, and provider configuration as service secrets. Initialize LangGraph’s PostgreSQL checkpoint schema once before enabling communication. Configure `/health` as the container liveness path. Use a private network or authenticated HTTPS connection from Vercel. Check the upstream request timeout against the configured model timeout.
+Configure the public HTTPS origin in `NEXT_PUBLIC_APP_URL` and the Supabase Auth redirect settings. Provide the Supabase URL and publishable key, the service-role key for web account administration, and a shared `INTERNAL_API_SECRET` for the web proxy and FastAPI. Configure the database, Redis, OpenAI and messaging credentials used by FastAPI and the worker for the same deployment environment. Initialize the LangGraph checkpoint tables once before enabling communication. Use separate staging credentials for previews.
 
-Run a worker with `celery -A app.worker:celery worker --loglevel=INFO`. Start one Celery Beat scheduler using `celery -A app.worker:celery beat --loglevel=INFO`, or configure [the optional Supabase Cron script](../supabase/functions/schedule-delivery.sql). Persist Redis across restarts. Database uniqueness and row locks protect delivery occurrences when ticks overlap.
+[Vercel Services](https://vercel.com/docs/services) · [Service bindings](https://vercel.com/docs/services/bindings)
+
+## External Celery worker and scheduler
+
+Use the Python dependencies or Docker image in `apps/ai-service` on a long-running worker host. From that directory run `celery -A app.worker:celery worker --loglevel=INFO` and exactly one scheduler running `celery -A app.worker:celery beat --loglevel=INFO`. Point both processes and FastAPI at the same persistent Redis broker and database. Beat enqueues delivery ticks directly. This Vercel configuration uses Beat for scheduling and keeps the optional Supabase Cron HTTP endpoint private.
 
 [LangGraph human approval](https://docs.langchain.com/oss/python/langgraph/interrupts)
 
