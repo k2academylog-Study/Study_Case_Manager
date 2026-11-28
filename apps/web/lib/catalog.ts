@@ -18,9 +18,19 @@ const ref = (key: string, label: string, source: string, labelKey = "name", need
 const choice = (key: string, label: string, options: string[]) => f(key, label, { kind: "select", options, required: true });
 const identity = [f("name","Full name",required),f("email","Email",{kind:"email"}),f("phone","Phone",{kind:"phone"})];
 const assignment = ref("staff_assignment_id","Teaching assignment","staff_assignments");
+export const streamOptions = [
+  "Common (All Subjects)",
+  "Physics, Chemistry, Mathematics, Biology (PCMB)",
+  "Physics, Chemistry, Mathematics, Computer Science (PCMC)",
+  "Physics, Chemistry, Biology (PCB)",
+  "Physics, Chemistry, Mathematics (PCM)",
+  "Commerce with Mathematics",
+  "Commerce with Computer Science",
+  "Arts & Humanities"
+] as const;
 export const modules: Record<string, Module> = {
-  students: { title:"Students", detail:"Manage enrollments and review each student's academic history.", table:"students", columns:["name","admission_number","batch_id","academic_status","active"], adminOnly:true,
-    fields:[f("name","Full name",required),f("admission_number","Admission number",required),ref("batch_id","Batch","batches"),f("gender","Gender"),f("admission_date","Admission date",{kind:"date"}),f("address","Address",{kind:"textarea"}),choice("academic_status","Academic status",["enrolled","graduated","withdrawn"]),f("active","Active",{kind:"checkbox"})] },
+  students: { title:"Students", detail:"Manage enrollments and review each student's academic history.", table:"students", columns:["name","admission_number","class_id","batch_id","stream","academic_status","active"], adminOnly:true,
+    fields:[f("name","Full name",required),f("admission_number","Admission number",required),ref("class_id","Class","classes"),ref("batch_id","Batch","batches"),f("stream","Subject stream",{kind:"select",options:[...streamOptions]}),f("gender","Gender"),f("admission_date","Admission date",{kind:"date"}),f("address","Address",{kind:"textarea"}),choice("academic_status","Academic status",["enrolled","graduated","withdrawn"]),f("active","Active",{kind:"checkbox"})] },
   staff: { title:"Staff", detail:"Manage teaching staff, account invitations, and contact preferences.", table:"staff", columns:["name","email","phone","employment_status","active"], adminOnly:true,
     fields:[...identity,f("whatsapp","WhatsApp number",{kind:"phone"}),f("qualifications","Qualifications"),f("experience_years","Years of teaching experience",{kind:"number",min:0}),f("joining_date","Joining date",{kind:"date"}),choice("employment_status","Employment status",["employed","on_leave","departed"]),f("email_consent","Email consent",{kind:"checkbox"}),f("whatsapp_consent","WhatsApp consent",{kind:"checkbox"}),f("active","Active",{kind:"checkbox"})] },
   classes: { title:"Classes", detail:"Organize year groups across the institution.", table:"classes", columns:["name","description"], fields:[f("name","Class name",required),f("description","Description",{kind:"textarea"})], adminOnly:true },

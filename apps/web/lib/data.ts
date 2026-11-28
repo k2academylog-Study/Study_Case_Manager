@@ -40,7 +40,7 @@ export async function loadData(route:string, options:DataOptions={}):Promise<Dat
   const result=await Promise.all([...tables].map(async table=>{
     const rows:Item[]=[];
     const privateProfile = user.role==="admin" && table==="students" && (root==="students");
-    const columns=table==="students" ? "id,name,batch_id,admission_number,academic_status,active,created_at" : "*";
+    const columns=table==="students" ? "id,name,batch_id,admission_number,stream,academic_status,active,created_at" : "*";
     const recent=table==="ai_analysis_results"&&root==="dashboard"?1:table==="communication_campaigns"&&root==="dashboard"?8:null;
     const cap=recent??limit;
     const batchSize=Math.min(cap,500);

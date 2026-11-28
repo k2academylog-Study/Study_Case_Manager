@@ -132,6 +132,14 @@ function defaultValues(fields:Field[],entry:Item|undefined,timezone:string,data?
     if(field.key==="admission_number" && (!value || value==="") && (!entry || !entry.id)){
       return [field.key, generateAdmissionNumber(data)];
     }
+    if(field.key==="class_id" && data){
+      const batchClass = entry?.class_id ?? (entry?.batch_id ? list(data,"batches").find(b=>b.id===entry.batch_id)?.class_id : null);
+      if(batchClass) return [field.key, batchClass];
+      return [field.key, value ?? list(data,"classes")[0]?.id ?? null];
+    }
+    if(field.key==="stream"){
+      return [field.key, value ?? (entry?.stream ?? "Common (All Subjects)")];
+    }
     return [field.key,value??(field.options?.includes(defaultChoice[field.key])?defaultChoice[field.key]:field.options?.[0])??null];
   }));
 }
@@ -178,10 +186,24 @@ export function RecordForm({module,entry,data,run,onDone,cancel}:{module:string;
   const [generatedCredentials,setGeneratedCredentials]=useState<{email:string;password:string;name:string}|null>(null);
   const [copied,setCopied]=useState(false);
   const id=useRef(entry?.id??"");
+  const selectedClassId=watch("class_id");
+  const selectedClassObj=list(data,"classes").find(c=>c.id===selectedClassId);
+  const selectedClassName=String(selectedClassObj?.name??"");
+  const isSenior=/\b(11|12)\b/.test(selectedClassName);
   async function submit(values:Record<string,unknown>){
     setError("");
     try{
       if(!id.current)id.current=crypto.randomUUID();
+      if(module==="students"){
+        const classObj=list(data,"classes").find(c=>c.id===values.class_id);
+        const senior=/\b(11|12)\b/.test(String(classObj?.name??""));
+        if(!senior){
+          values.stream="Common (All Subjects)";
+        }else if(!values.stream||values.stream==="Common (All Subjects)"){
+          setError("Please select a subject stream for Class 11/12 (e.g. Physics, Chemistry, Maths, Biology / Computer Science).");
+          return;
+        }
+      }
       const res=await run({operation:"save",module,id:id.current,values,create:!entry,weeks}) as {temporaryPassword?:string;email?:string;name?:string}|undefined;
       if(module==="staff"&&res?.temporaryPassword){
         setGeneratedCredentials({
@@ -198,6 +220,10 @@ export function RecordForm({module,entry,data,run,onDone,cancel}:{module:string;
     let rows=list(data,field.source??"");
     const assignmentId=watch("staff_assignment_id");
     if(field.source==="staff_assignments")rows=rows.filter(row=>row.active!==false||row.id===entry?.staff_assignment_id);
+    if(field.source==="batches"&&module==="students"){
+      const classId=watch("class_id");
+      if(classId)rows=rows.filter(row=>row.class_id===classId);
+    }
     if(field.source==="topics"&&assignmentId){
       const a=list(data,"staff_assignments").find(row=>row.id===assignmentId);
       const batch=list(data,"batches").find(row=>row.id===a?.batch_id);
@@ -210,6 +236,37 @@ export function RecordForm({module,entry,data,run,onDone,cancel}:{module:string;
     return lookup ? rows.filter(row=>row.id===watch(field.key)||rowName(data,field.source!,row.id).toLowerCase().includes(lookup)) : rows;
   }
   return <form className="record-form" onSubmit={handleSubmit(submit)} noValidate><div className="form-grid">{fields.map(field=>{
+    if(module==="students"&&field.key==="stream"){
+      if(!isSenior){
+        return <div key="stream-common-info" style={{gridColumn:"1/-1",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"12px 14px",marginTop:4,marginBottom:6}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,fontWeight:600,color:"#166534",fontSize:".9rem"}}>
+            <Check size={18} style={{color:"#16a34a"}}/>
+            <span>Class 6–10 Curriculum: Common Subjects</span>
+          </div>
+          <p style={{margin:"4px 0 0",color:"#15803d",fontSize:".82rem"}}>
+            All subjects are common for Class 6 to 10 (Mathematics, English, Science, Social Science, Language). No stream selection required.
+          </p>
+        </div>;
+      }
+      const streamProps=register("stream",{required:isSenior?"Select a subject stream for Class 11/12":false});
+      return <label key="stream">
+        <span>Subject stream (Class 11 &amp; 12) <span aria-hidden="true">*</span></span>
+        <select {...streamProps} defaultValue={String(entry?.stream??"")}>
+          <option value="">Select subject stream</option>
+          <option value="Physics, Chemistry, Mathematics, Biology (PCMB)">Physics, Chemistry, Mathematics, Biology (PCMB)</option>
+          <option value="Physics, Chemistry, Mathematics, Computer Science (PCMC)">Physics, Chemistry, Mathematics, Computer Science (PCMC)</option>
+          <option value="Physics, Chemistry, Biology (PCB)">Physics, Chemistry, Biology (PCB)</option>
+          <option value="Physics, Chemistry, Mathematics (PCM)">Physics, Chemistry, Mathematics (PCM)</option>
+          <option value="Commerce with Mathematics">Commerce with Mathematics (Accountancy, Business Studies, Economics, Maths)</option>
+          <option value="Commerce with Computer Science">Commerce with Computer Science (Accountancy, Business Studies, Economics, CS)</option>
+          <option value="Arts & Humanities">Arts &amp; Humanities (History, Political Science, Geography, Economics)</option>
+        </select>
+        <small style={{color:"var(--purple-dark)",marginTop:4,display:"block",fontSize:".78rem"}}>
+          Choose the subject combination for this senior student.
+        </small>
+        {errors.stream&&<span className="field-error">{String(errors.stream?.message??"Please select a subject stream.")}</span>}
+      </label>;
+    }
     if(field.kind==="weekdays"){
       const days=watch(field.key) as number[];
       return <fieldset className="stack-field" key={field.key}><legend>{field.label}</legend><div className="roster-picks">{["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map((day,i)=><label key={day}><input type="checkbox" checked={days.includes(i+1)} onChange={()=>setValue(field.key,days.includes(i+1)?days.filter(n=>n!==i+1):[...days,i+1].sort(),{shouldValidate:true})}/>{day}</label>)}</div>{errors[field.key]&&<span className="field-error">Select at least one working day.</span>}</fieldset>;
@@ -226,6 +283,16 @@ export function RecordForm({module,entry,data,run,onDone,cancel}:{module:string;
         props.onChange(event);
         if(field.key==="staff_assignment_id"&&module==="syllabus"){setValue("topic_id",null);setValue("subtopic_id",null);}
         if(field.key==="topic_id"&&module==="syllabus")setValue("subtopic_id",null);
+        if(field.key==="class_id"&&module==="students"){
+          setValue("batch_id",null);
+          const targetClass=list(data,"classes").find(c=>c.id===event.target.value);
+          const targetIsSenior=/\b(11|12)\b/.test(String(targetClass?.name??""));
+          if(!targetIsSenior){
+            setValue("stream","Common (All Subjects)");
+          }else{
+            setValue("stream","");
+          }
+        }
       }}><option value="">{field.required?(choices(field).length===0?"No "+field.label.toLowerCase()+" found":"Select "+field.label.toLowerCase()):"None"}</option>{field.options?.map(option=><option key={option} value={option}>{label(option)}</option>)}{field.source&&choices(field).map(row=><option key={row.id} value={row.id}>{rowName(data,field.source!,row.id)}</option>)}</select>:
       field.kind==="textarea"?<textarea {...props}/>:<input type={field.kind==="datetime"?"datetime-local":field.kind==="phone"?"tel":field.kind??"text"} {...props} min={field.min} step="any"/>}
       {field.key==="admission_number"&&!entry&&<small style={{color:"var(--purple-dark)",marginTop:4,display:"block",fontSize:".78rem"}}>✨ Auto-generated admission number</small>}
@@ -290,6 +357,17 @@ export function RecordForm({module,entry,data,run,onDone,cancel}:{module:string;
 }
 export function recordValue(data:Data,row:Item,column:string){
   const value=row[column];
+  if(column==="class_id"){
+    const classId=value??(row.batch_id?list(data,"batches").find(b=>b.id===row.batch_id)?.class_id:null);
+    return rowName(data,"classes",classId);
+  }
+  if(column==="stream"){
+    const classId=row.class_id??(row.batch_id?list(data,"batches").find(b=>b.id===row.batch_id)?.class_id:null);
+    const className=String(list(data,"classes").find(c=>c.id===classId)?.name??"");
+    const isSenior=/\b(11|12)\b/.test(className);
+    if(!isSenior)return "Common";
+    return value?label(value):"—";
+  }
   if(referenceColumns[column])return rowName(data,referenceColumns[column],value);
   if(column==="active")return <Status value={value?"active":"inactive"}/>;
   if(column==="status"||column.endsWith("_status"))return <Status value={value}/>;
@@ -301,7 +379,8 @@ export function RecordTable({data,items,columns,renderAction,person,filter=true}
   const [query,setQuery]=useState("");
   const [page,setPage]=useState(0);
   const matches=items.filter(row=>columns.some(column=>{
-    const value=referenceColumns[column]?rowName(data,referenceColumns[column],row[column]):label(row[column]);
+    const rawVal=column==="class_id"?(row[column]??list(data,"batches").find(b=>b.id===row.batch_id)?.class_id):column==="stream"?(row.stream??(row.batch_id&&!/\b(11|12)\b/.test(String(list(data,"classes").find(c=>c.id===list(data,"batches").find(b=>b.id===row.batch_id)?.class_id)?.name??""))?"Common":"")):row[column];
+    const value=referenceColumns[column]?rowName(data,referenceColumns[column],rawVal):label(rawVal);
     return value.toLocaleLowerCase().includes(query.toLocaleLowerCase());
   }));
   const pages=Math.max(1,Math.ceil(matches.length/20));
