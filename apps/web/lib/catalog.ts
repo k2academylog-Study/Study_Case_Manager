@@ -18,6 +18,30 @@ const ref = (key: string, label: string, source: string, labelKey = "name", need
 const choice = (key: string, label: string, options: string[]) => f(key, label, { kind: "select", options, required: true });
 const identity = [f("name","Full name",required),f("email","Email",{kind:"email"}),f("phone","Phone",{kind:"phone"})];
 const assignment = ref("staff_assignment_id","Teaching assignment","staff_assignments");
+export const defaultSubjects = [
+  "Mathematics",
+  "Physics",
+  "Chemistry",
+  "Biology",
+  "Computer Science",
+  "Information Practices (IP)",
+  "English",
+  "Tamil",
+  "Hindi",
+  "French",
+  "Sanskrit",
+  "Science",
+  "Social Science",
+  "Accountancy",
+  "Business Studies",
+  "Economics",
+  "History",
+  "Geography",
+  "Political Science",
+  "Environmental Science",
+  "General Knowledge",
+  "Physical Education"
+] as const;
 export const streamOptions = [
   "Common (All Subjects)",
   "Physics, Chemistry, Mathematics, Biology (PCMB)",
@@ -31,8 +55,8 @@ export const streamOptions = [
 export const modules: Record<string, Module> = {
   students: { title:"Students", detail:"Manage enrollments and review each student's academic history.", table:"students", columns:["name","admission_number","class_id","batch_id","stream","academic_status","active"], adminOnly:true,
     fields:[f("name","Full name",required),f("admission_number","Admission number",required),ref("class_id","Class","classes"),ref("batch_id","Batch","batches"),f("stream","Subject stream",{kind:"select",options:[...streamOptions]}),f("gender","Gender"),f("admission_date","Admission date",{kind:"date"}),f("address","Address",{kind:"textarea"}),choice("academic_status","Academic status",["enrolled","graduated","withdrawn"]),f("active","Active",{kind:"checkbox"})] },
-  staff: { title:"Staff", detail:"Manage teaching staff, account invitations, and contact preferences.", table:"staff", columns:["name","email","phone","employment_status","active"], adminOnly:true,
-    fields:[...identity,f("whatsapp","WhatsApp number",{kind:"phone"}),f("qualifications","Qualifications"),f("experience_years","Years of teaching experience",{kind:"number",min:0}),f("joining_date","Joining date",{kind:"date"}),choice("employment_status","Employment status",["employed","on_leave","departed"]),f("email_consent","Email consent",{kind:"checkbox"}),f("whatsapp_consent","WhatsApp consent",{kind:"checkbox"}),f("active","Active",{kind:"checkbox"})] },
+  staff: { title:"Staff", detail:"Manage teaching staff, account invitations, and contact preferences.", table:"staff", columns:["name","email","phone","handled_subjects","employment_status","active"], adminOnly:true,
+    fields:[f("name","Full name",required),f("email","Email",{kind:"email",required:true}),f("phone","Phone",{kind:"phone"}),f("handled_subjects","Subjects handled",{kind:"textarea"}),f("whatsapp","WhatsApp number",{kind:"phone"}),f("qualifications","Qualifications"),f("experience_years","Years of teaching experience",{kind:"number",min:0}),f("joining_date","Joining date",{kind:"date"}),choice("employment_status","Employment status",["employed","on_leave","departed"]),f("email_consent","Email consent",{kind:"checkbox"}),f("whatsapp_consent","WhatsApp consent",{kind:"checkbox"}),f("active","Active",{kind:"checkbox"})] },
   classes: { title:"Classes", detail:"Organize year groups across the institution.", table:"classes", columns:["name","description"], fields:[f("name","Class name",required),f("description","Description",{kind:"textarea"})], adminOnly:true },
   batches: { title:"Batches", detail:"Manage teaching groups within each class and academic year.", table:"batches",columns:["name","class_id","academic_year_id"],fields:[f("name","Batch name",required),ref("class_id","Class","classes"),ref("academic_year_id","Academic year","academic_years")],adminOnly:true },
   subjects: { title:"Subjects", detail:"Maintain the subject catalogue used by your academic teams.", table:"subjects",columns:["name","description"],fields:[f("name","Subject name",required),f("description","Description",{kind:"textarea"})],adminOnly:true },
@@ -95,5 +119,5 @@ export function rowName(data: Data, table: string, id: unknown): string {
   return String(row.name ?? row.title ?? row.id);
 }
 export const referenceColumns: Record<string,string> = { batch_id:"batches", class_id:"classes", staff_id:"staff", staff_assignment_id:"staff_assignments", student_id:"students", subject_id:"subjects", topic_id:"topics", subtopic_id:"subtopics", academic_year_id:"academic_years", syllabus_id:"syllabi", chapter_id:"chapters", session_id:"class_sessions" };
-export const heading = (key: string) => ({ name:"Name", batch_id:"Batch", class_id:"Class", staff_id:"Staff member", staff_assignment_id:"Teaching assignment", student_id:"Student", subject_id:"Subject", topic_id:"Topic", academic_year_id:"Academic year", syllabus_id:"Curriculum", chapter_id:"Chapter", session_id:"Session", starts_at:"Starts", ends_at:"Ends", duration_minutes:"Minutes", max_marks:"Max. marks", completion:"Completion" }[key] ?? key.replaceAll("_"," ").replace(/^./,c=>c.toUpperCase()));
+export const heading = (key: string) => ({ name:"Name", batch_id:"Batch", class_id:"Class", staff_id:"Staff member", handled_subjects:"Subjects handled", staff_assignment_id:"Teaching assignment", student_id:"Student", subject_id:"Subject", topic_id:"Topic", academic_year_id:"Academic year", syllabus_id:"Curriculum", chapter_id:"Chapter", session_id:"Session", starts_at:"Starts", ends_at:"Ends", duration_minutes:"Minutes", max_marks:"Max. marks", completion:"Completion" }[key] ?? key.replaceAll("_"," ").replace(/^./,c=>c.toUpperCase()));
 

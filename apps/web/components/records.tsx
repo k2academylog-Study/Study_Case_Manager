@@ -4,7 +4,7 @@ import Link from "next/link";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, type Resolver } from "react-hook-form";
 import { Check, Copy, Download, KeyRound, Plus, Search, Trash2, Upload, UserRoundPlus, X } from "lucide-react";
-import { fieldsFor, heading, label, list, modules, referenceColumns, rowName, type Data, type Field, type Item } from "@/lib/catalog";
+import { defaultSubjects, fieldsFor, heading, label, list, modules, referenceColumns, rowName, type Data, type Field, type Item } from "@/lib/catalog";
 import type { Command } from "@/lib/command";
 import { academicDateTime, dateKey } from "@/lib/metrics";
 import { downloadCsv, readSpreadsheet } from "@/lib/spreadsheet";
@@ -140,6 +140,9 @@ function defaultValues(fields:Field[],entry:Item|undefined,timezone:string,data?
     if(field.key==="stream"){
       return [field.key, value ?? (entry?.stream ?? "Common (All Subjects)")];
     }
+    if(field.key==="handled_subjects"){
+      return [field.key, value ?? (entry?.handled_subjects ?? "")];
+    }
     return [field.key,value??(field.options?.includes(defaultChoice[field.key])?defaultChoice[field.key]:field.options?.[0])??null];
   }));
 }
@@ -186,6 +189,29 @@ export function RecordForm({module,entry,data,run,onDone,cancel}:{module:string;
   const [generatedCredentials,setGeneratedCredentials]=useState<{email:string;password:string;name:string}|null>(null);
   const [copied,setCopied]=useState(false);
   const id=useRef(entry?.id??"");
+  const [selectedSubjects,setSelectedSubjects]=useState<string[]>(()=>{
+    if(module==="staff"){
+      const raw=entry?.handled_subjects;
+      if(typeof raw==="string"&&raw.trim()){
+        return raw.split(",").map(s=>s.trim()).filter(Boolean);
+      }
+    }
+    return [];
+  });
+  const [subjectFilter,setSubjectFilter]=useState("");
+  const toggleSubject=(sub:string)=>{
+    const trimmed=sub.trim();
+    if(!trimmed)return;
+    const exists=selectedSubjects.includes(trimmed);
+    const next=exists?selectedSubjects.filter(s=>s!==trimmed):[...selectedSubjects,trimmed];
+    setSelectedSubjects(next);
+    setValue("handled_subjects",next.length>0?next.join(", "):"",{shouldValidate:true});
+  };
+  const removeSubject=(sub:string)=>{
+    const next=selectedSubjects.filter(s=>s!==sub);
+    setSelectedSubjects(next);
+    setValue("handled_subjects",next.length>0?next.join(", "):"",{shouldValidate:true});
+  };
   const selectedClassId=watch("class_id");
   const selectedClassObj=list(data,"classes").find(c=>c.id===selectedClassId);
   const selectedClassName=String(selectedClassObj?.name??"");
@@ -203,6 +229,9 @@ export function RecordForm({module,entry,data,run,onDone,cancel}:{module:string;
           setError("Please select a subject stream for Class 11/12 (e.g. Physics, Chemistry, Maths, Biology / Computer Science).");
           return;
         }
+      }
+      if(module==="staff"){
+        values.handled_subjects = selectedSubjects.length > 0 ? selectedSubjects.join(", ") : null;
       }
       const res=await run({operation:"save",module,id:id.current,values,create:!entry,weeks}) as {temporaryPassword?:string;email?:string;name?:string}|undefined;
       if(module==="staff"&&res?.temporaryPassword){
@@ -267,6 +296,130 @@ export function RecordForm({module,entry,data,run,onDone,cancel}:{module:string;
         {errors.stream&&<span className="field-error">{String(errors.stream?.message??"Please select a subject stream.")}</span>}
       </label>;
     }
+    if(module==="staff"&&field.key==="handled_subjects"){
+      const catalogSubjects=list(data,"subjects").map(s=>String(s.name??"")).filter(Boolean);
+      const allAvailable=Array.from(new Set([...defaultSubjects,...catalogSubjects,...selectedSubjects]));
+      const filterText=subjectFilter.trim().toLowerCase();
+      const filtered=filterText?allAvailable.filter(s=>s.toLowerCase().includes(filterText)):allAvailable;
+
+      return (
+        <div key={field.key} style={{gridColumn:"1/-1",display:"flex",flexDirection:"column",gap:8,background:"var(--surface)",border:"1px solid var(--line)",borderRadius:10,padding:14}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",flexWrap:"wrap",gap:4}}>
+            <span style={{fontWeight:600,fontSize:".92rem",color:"var(--foreground)"}}>
+              {field.label} <small style={{fontWeight:400,color:"var(--muted)"}}>(Select multiple subjects handled by this staff)</small>
+            </span>
+            <span style={{fontSize:".8rem",color:"var(--purple-dark)",fontWeight:600}}>
+              {selectedSubjects.length} selected
+            </span>
+          </div>
+
+          {selectedSubjects.length>0?(
+            <div style={{display:"flex",flexWrap:"wrap",gap:6,padding:"8px 10px",background:"#f5f3ff",border:"1px solid #ddd6fe",borderRadius:8,alignItems:"center"}}>
+              {selectedSubjects.map(sub=>(
+                <span key={sub} style={{display:"inline-flex",alignItems:"center",gap:5,background:"#7c3aed",color:"#fff",padding:"4px 9px",borderRadius:999,fontSize:".8rem",fontWeight:500}}>
+                  {sub}
+                  <button
+                    type="button"
+                    onClick={()=>removeSubject(sub)}
+                    title={`Remove ${sub}`}
+                    style={{background:"transparent",border:0,color:"#fff",cursor:"pointer",padding:0,display:"inline-flex",alignItems:"center"}}
+                  >
+                    <X size={13}/>
+                  </button>
+                </span>
+              ))}
+              <button
+                type="button"
+                onClick={()=>{
+                  setSelectedSubjects([]);
+                  setValue("handled_subjects","",{shouldValidate:true});
+                }}
+                style={{background:"transparent",border:0,color:"#6d28d9",textDecoration:"underline",cursor:"pointer",fontSize:".75rem",padding:"2px 6px",marginLeft:"auto"}}
+              >
+                Clear all
+              </button>
+            </div>
+          ):(
+            <div style={{padding:"8px 12px",background:"#fafafa",border:"1px dashed var(--line)",borderRadius:8,color:"var(--muted)",fontSize:".82rem"}}>
+              No subjects selected yet. Click any subject pill below or search to assign.
+            </div>
+          )}
+
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <div style={{position:"relative",flex:1}}>
+              <Search size={14} style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:"var(--muted)"}}/>
+              <input
+                type="text"
+                placeholder="Search subjects (e.g. Maths, Physics, English, Tamil, CS)..."
+                value={subjectFilter}
+                onChange={e=>setSubjectFilter(e.target.value)}
+                onKeyDown={e=>{
+                  if(e.key==="Enter"){
+                    e.preventDefault();
+                    if(subjectFilter.trim()){
+                      toggleSubject(subjectFilter.trim());
+                      setSubjectFilter("");
+                    }
+                  }
+                }}
+                style={{paddingLeft:30,width:"100%",fontSize:".85rem",height:36,borderRadius:6,border:"1px solid var(--line)"}}
+              />
+            </div>
+            {subjectFilter.trim()&&!allAvailable.some(s=>s.toLowerCase()===filterText)&&(
+              <button
+                type="button"
+                className="button button-secondary"
+                style={{padding:"6px 12px",height:36,fontSize:".82rem",whiteSpace:"nowrap"}}
+                onClick={()=>{
+                  toggleSubject(subjectFilter.trim());
+                  setSubjectFilter("");
+                }}
+              >
+                <Plus size={14}/> Add &quot;{subjectFilter.trim()}&quot;
+              </button>
+            )}
+          </div>
+
+          <div style={{display:"flex",flexWrap:"wrap",gap:6,maxHeight:160,overflowY:"auto",padding:6,border:"1px solid var(--line)",borderRadius:8,background:"#fff"}}>
+            {filtered.map(sub=>{
+              const isSelected=selectedSubjects.includes(sub);
+              return (
+                <button
+                  key={sub}
+                  type="button"
+                  onClick={()=>toggleSubject(sub)}
+                  style={{
+                    display:"inline-flex",
+                    alignItems:"center",
+                    gap:5,
+                    padding:"4px 10px",
+                    borderRadius:999,
+                    fontSize:".8rem",
+                    fontWeight:isSelected?600:400,
+                    border:isSelected?"1px solid #7c3aed":"1px solid var(--line)",
+                    background:isSelected?"#ede9fe":"#fff",
+                    color:isSelected?"#5b21b6":"var(--foreground)",
+                    cursor:"pointer",
+                    transition:"all 0.15s ease"
+                  }}
+                >
+                  {isSelected?<Check size={12} style={{strokeWidth:3}}/>:<Plus size={12} style={{color:"var(--muted)"}}/>}
+                  {sub}
+                </button>
+              );
+            })}
+            {filtered.length===0&&(
+              <p style={{margin:"6px 8px",fontSize:".82rem",color:"var(--muted)"}}>
+                No matching subject. Press Enter or click &quot;Add&quot; to add this subject.
+              </p>
+            )}
+          </div>
+
+          <input type="hidden" {...register("handled_subjects")} value={selectedSubjects.join(", ")}/>
+          {errors.handled_subjects&&<span className="field-error">{String(errors.handled_subjects.message)}</span>}
+        </div>
+      );
+    }
     if(field.kind==="weekdays"){
       const days=watch(field.key) as number[];
       return <fieldset className="stack-field" key={field.key}><legend>{field.label}</legend><div className="roster-picks">{["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map((day,i)=><label key={day}><input type="checkbox" checked={days.includes(i+1)} onChange={()=>setValue(field.key,days.includes(i+1)?days.filter(n=>n!==i+1):[...days,i+1].sort(),{shouldValidate:true})}/>{day}</label>)}</div>{errors[field.key]&&<span className="field-error">Select at least one working day.</span>}</fieldset>;
@@ -297,7 +450,7 @@ export function RecordForm({module,entry,data,run,onDone,cancel}:{module:string;
       field.kind==="textarea"?<textarea {...props}/>:<input type={field.kind==="datetime"?"datetime-local":field.kind==="phone"?"tel":field.kind??"text"} {...props} min={field.min} step="any"/>}
       {field.key==="admission_number"&&!entry&&<small style={{color:"var(--purple-dark)",marginTop:4,display:"block",fontSize:".78rem"}}>✨ Auto-generated admission number</small>}
       {field.source&&choices(field).length===0&&<small style={{color:"var(--purple-dark)",marginTop:4,display:"block",fontSize:".78rem"}}>No {field.label.toLowerCase()} available. <Link href={field.source==="academic_years"?"/admin/academic-years":"/admin/"+field.source.replaceAll("_","-")} style={{textDecoration:"underline",fontWeight:700}}>Add {field.label.toLowerCase()} &rarr;</Link></small>}
-      {errors[field.key]&&<span className="field-error">{String(errors[field.key]?.message??"Check this value.")}</span>}
+      {errors[field.key]&&<span className="field-error">{errors[field.key]?.message&&String(errors[field.key]?.message).includes("expected string")?`${field.label} is required.`:String(errors[field.key]?.message??"Check this value.")}</span>}
     </label>;
   })}
   {module==="timetable"&&!entry&&<label>Weekly occurrences<input type="number" min="1" max="52" value={weeks} onChange={e=>setWeeks(Number(e.target.value))}/></label>}
@@ -368,6 +521,12 @@ export function recordValue(data:Data,row:Item,column:string){
     if(!isSenior)return "Common";
     return value?label(value):"—";
   }
+  if(column==="handled_subjects"){
+    if(!value)return "—";
+    const items=String(value).split(",").map(s=>s.trim()).filter(Boolean);
+    if(items.length<=2)return items.join(", ");
+    return <span title={String(value)}>{items.slice(0,2).join(", ")} <span style={{fontSize:".75rem",color:"var(--purple-dark)",fontWeight:600}}>+{items.length-2} more</span></span>;
+  }
   if(referenceColumns[column])return rowName(data,referenceColumns[column],value);
   if(column==="active")return <Status value={value?"active":"inactive"}/>;
   if(column==="status"||column.endsWith("_status"))return <Status value={value}/>;
@@ -379,7 +538,7 @@ export function RecordTable({data,items,columns,renderAction,person,filter=true}
   const [query,setQuery]=useState("");
   const [page,setPage]=useState(0);
   const matches=items.filter(row=>columns.some(column=>{
-    const rawVal=column==="class_id"?(row[column]??list(data,"batches").find(b=>b.id===row.batch_id)?.class_id):column==="stream"?(row.stream??(row.batch_id&&!/\b(11|12)\b/.test(String(list(data,"classes").find(c=>c.id===list(data,"batches").find(b=>b.id===row.batch_id)?.class_id)?.name??""))?"Common":"")):row[column];
+    const rawVal=column==="class_id"?(row[column]??list(data,"batches").find(b=>b.id===row.batch_id)?.class_id):column==="stream"?(row.stream??(row.batch_id&&!/\b(11|12)\b/.test(String(list(data,"classes").find(c=>c.id===list(data,"batches").find(b=>b.id===row.batch_id)?.class_id)?.name??""))?"Common":"")):column==="handled_subjects"?(row.handled_subjects??""):row[column];
     const value=referenceColumns[column]?rowName(data,referenceColumns[column],rawVal):label(rawVal);
     return value.toLocaleLowerCase().includes(query.toLocaleLowerCase());
   }));
