@@ -59,6 +59,13 @@ export function makeReport(data:Data,filters:ReportFilters):Report {
        ["Completed after target",String(completed.filter(row=>String(row.completed_on)>String(row.target_on)).length)],
        ["Tracked topics pending",String(scoped.progress.filter(row=>Number(row.completion)<100).length)]);
     add("Teaching sessions",["Date","Subject","Minutes","Notes"],scoped.sessions.map(row=>[text(row.date),subject(row),text(row.duration_minutes),text(row.notes)]));
+    const teacherAssessments = scoped.assessments.slice().sort((a,b)=>String(b.assessment_on).localeCompare(String(a.assessment_on)));
+    if(teacherAssessments.length){
+      add("Assessments given by teacher",["Date","Assessment type","Title","Subject","Class and batch","Max marks","Pass marks"],teacherAssessments.map(a=>{
+        const asgn = scoped.assignments.find(r=>r.id===a.staff_assignment_id);
+        return [showDate(a.assessment_on),text(a.assessment_type),text(a.title),rowName(data,"subjects",asgn?.subject_id),rowName(data,"batches",asgn?.batch_id),String(a.max_marks??"—"),String(a.pass_marks??"—")];
+      }));
+    }
   }
   if(included("student","attendance")){
     add("Subject attendance",["Subject","Eligible","Attended","Missed","Attendance"],[...Map.groupBy(attendanceRows,r=>subject(sessions.get(String(r.session_id))))].map(([name,rows])=>{const a=attendance(rows,settings);return [name,String(a.eligible),String(a.attended),String(a.missed),pct(a.rate)];}));

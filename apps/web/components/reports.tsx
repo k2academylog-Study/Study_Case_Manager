@@ -1,13 +1,14 @@
 "use client";
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Download, FileText, Printer } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Download, FileText, Printer, Trash2 } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { list, modules, rowName, type Data, type Item } from "@/lib/catalog";
 import { makeReport, reportTypes, type ReportFilters } from "@/lib/report";
 import type { Filters } from "@/lib/metrics";
 import { FilterBar } from "./dashboard";
-import { RecordTable, recordValue, StaffInvite, type RunCommand } from "./records";
+import { Modal, RecordTable, recordValue, StaffInvite, type RunCommand } from "./records";
 import { Empty, Initials, Notice, PageHeading } from "./ui";
 import { RecordFile } from "./record-file";
 
@@ -54,12 +55,33 @@ export function ReportPage({data,base,demo,type="attendance",personId,embedded=f
   </div>;
 }
 export function PersonPage({module,entry,data,base,demo,run}:{module:"students"|"staff";entry:Item;data:Data;base:string;demo:boolean;run:RunCommand}){
+  const router = useRouter();
   const [tab,setTab]=useState("Profile");
+  const [confirmDelete,setConfirmDelete]=useState(false);
+  const [busy,setBusy]=useState(false);
+  const [error,setError]=useState("");
   const student=module==="students";
-  return <><PageHeading title={String(entry.name)} detail={student?String(entry.admission_number)+" · "+rowName(data,"batches",entry.batch_id):String(entry.email??"Staff profile")}><Link className="button button-secondary" href={base+"/"+module}>Back to {module}</Link><Link className="button button-secondary" href={base+"/"+module+"/"+entry.id+"/edit"}>Edit profile</Link><Link className="button button-primary" href={base+"/reports/"+module+"/"+entry.id}><Download size={16}/> Full report</Link></PageHeading>
+  return <><PageHeading title={String(entry.name)} detail={student?String(entry.admission_number)+" · "+rowName(data,"batches",entry.batch_id):String(entry.email??"Staff profile")}><Link className="button button-secondary" href={base+"/"+module}>Back to {module}</Link><Link className="button button-secondary" href={base+"/"+module+"/"+entry.id+"/edit"}>Edit profile</Link><Link className="button button-primary" href={base+"/reports/"+module+"/"+entry.id}><Download size={16}/> Full report</Link><button type="button" className="button button-secondary" style={{color:"#dc2626",borderColor:"#fecaca"}} onClick={()=>setConfirmDelete(true)}><Trash2 size={16}/> Delete {student?"student":"staff member"}</button></PageHeading>
     <div className="section-tabs">{["Profile",student?"Academic history":"Teaching activity"].map(value=><button className={tab===value?"selected":""} key={value} onClick={()=>setTab(value)}>{value}</button>)}</div>
     {tab==="Profile"?<section className="panel padded-panel"><div className="panel-head"><div className="person-cell"><Initials name={String(entry.name)}/><h2>{student?"Student details":"Staff details"}</h2></div>{!student&&<StaffInvite staff={list(data,"staff")} base={base} entry={entry} run={run}/>}</div>
     {!demo&&<div style={{marginBottom:13}}><RecordFile type={student?"student":"staff"} id={entry.id} exists={Boolean(entry.photo_path)}/></div>}
     <dl className="details-grid">{modules[module].fields?.map(field=><div key={field.key}><dt>{field.label}</dt><dd>{recordValue(data,entry,field.key)}</dd></div>)}</dl></section>:<ReportPage data={data} base={base} demo={demo} type={student?"student":"staff"} personId={entry.id} embedded/>}
+    {confirmDelete&&<Modal title={"Delete "+(student?"student":"staff member")} close={()=>setConfirmDelete(false)}>
+      <div className="delete-confirm-box">
+        <p>Are you sure you want to delete <strong>{String(entry.name)}</strong>?</p>
+        {!student&&<small style={{color:"#b91c1c",display:"block",marginTop:8}}>Warning: This will permanently remove this staff member and all associated teaching assignments.</small>}
+        {error&&<Notice type="error">{error}</Notice>}
+        <div className="form-actions" style={{marginTop:20}}>
+          <button className="button button-secondary" type="button" onClick={()=>setConfirmDelete(false)} disabled={busy}>Cancel</button>
+          <button className="button button-primary" style={{background:"#dc2626",borderColor:"#dc2626"}} disabled={busy} onClick={async ()=>{
+            setBusy(true);setError("");
+            try{
+              await run({operation:"delete",module,id:entry.id});
+              router.push(base+"/"+module);
+            }catch(err){setError((err as Error).message);setBusy(false);}
+          }}>{busy?"Deleting…":"Confirm delete"}</button>
+        </div>
+      </div>
+    </Modal>}
   </>;
 }

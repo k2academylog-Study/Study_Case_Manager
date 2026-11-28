@@ -24,7 +24,7 @@ const usages:Record<string,string[]>={
   timetable:["timetable_entries","calendar_events","assignments","assessments","topic_progress","topics","syllabus_targets"],
   calendar:["timetable_entries","calendar_events","assignments","assessments","topic_progress","topics","syllabus_targets"],
   "ai/student-performance":["students","ai_analysis_results"],"ai/communication":["students","communication_campaigns","communication_recipients","communication_delivery_logs"],
-  "ai/interventions":["students","academic_interventions"],chapters:["syllabi","chapters"],topics:["chapters","topics"],subtopics:["topics","subtopics"],
+  "ai/interventions":["students","academic_interventions"],ai:["students","ai_analysis_results"],"ai/assistant":["students","ai_analysis_results"],reporting:["generated_reports","report_templates","students","staff"],chapters:["syllabi","chapters"],topics:["chapters","topics"],subtopics:["topics","subtopics"],
 };
 export async function loadData(route:string, options:DataOptions={}):Promise<Data> {
   const user=await actor();
@@ -32,7 +32,7 @@ export async function loadData(route:string, options:DataOptions={}):Promise<Dat
   const [root,segment,personId]=route.split("/");
   const limit=options.limit??5000;
   const studentId=options.studentId??(root==="students"&&/^[a-f0-9-]{36}$/i.test(segment??"")?segment:root==="reports"&&segment==="students"?personId:undefined);
-  const everything = ["dashboard","reports","analytics","student-performance"].includes(root) || /^students\/[^/]+$/.test(route) || /^staff\/[^/]+$/.test(route);
+  const everything = ["dashboard","reporting","reports","analytics","student-performance"].includes(root) || /^students\/[^/]+$/.test(route) || /^staff\/[^/]+$/.test(route);
   const tables=new Set([...base,...(everything?records:usages[route]??usages[root]??[]),...(root==="reports"?["generated_reports","ai_analysis_results","academic_interventions","communication_campaigns","communication_delivery_logs","report_templates","assessment_questions","assessment_question_scores"]:[]),...(root==="dashboard"&&user.role==="admin"?["communication_campaigns","ai_analysis_results"]:[])]);
   const exact=modules[route]??modules[root];
   if(exact) tables.add(exact.table);

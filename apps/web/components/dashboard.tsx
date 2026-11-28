@@ -24,13 +24,61 @@ function Trend({data,filters,today,metric="Attendance"}:{data:Data;filters:Filte
     <defs><linearGradient id={"trend-"+metric} x1="0" x2="0" y1="0" y2="1"><stop offset="5%" stopColor="#8b55f3" stopOpacity={0.27}/><stop offset="98%" stopColor="#8b55f3" stopOpacity={0.02}/></linearGradient></defs>
     <CartesianGrid stroke="#edf0f5" vertical={false} strokeDasharray="4 4"/><XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fill:"#657084",fontSize:12}} tickMargin={11}/><YAxis axisLine={false} tickLine={false} tick={{fill:"#657084",fontSize:12}} tickFormatter={value=>value+"%"} domain={[0,100]} tickCount={5}/><Tooltip formatter={value=>[String(value)+"%",metric]}/><Area type="monotone" dataKey={metric} stroke="#7c3aed" fill={"url(#trend-"+metric+")"} strokeWidth={2.75} dot={{r:3,fill:"#fff",strokeWidth:2}} animationDuration={450}/></AreaChart></ResponsiveContainer>:<Empty title="No trend data" text="Trend points appear as academic records are submitted."/>}</div>;
 }
+
+function assessmentBadge(type: unknown) {
+  const t = String(type ?? "other");
+  const badges: Record<string, { label: string; bg: string; color: string; border: string }> = {
+    weekly_test: { label: "Weekly Test", bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe" },
+    unit_test: { label: "Unit Test", bg: "#f5f3ff", color: "#6d28d9", border: "#ddd6fe" },
+    quiz: { label: "Quiz", bg: "#fffbeb", color: "#b45309", border: "#fde68a" },
+    monthly_test: { label: "Monthly Test", bg: "#ecfdf5", color: "#047857", border: "#a7f3d0" },
+    revision_test: { label: "Revision Test", bg: "#eef2ff", color: "#4338ca", border: "#c7d2fe" },
+    model_examination: { label: "Model Exam", bg: "#fff1f2", color: "#be123c", border: "#fecdd3" },
+    term_examination: { label: "Term Exam", bg: "#fdf2f8", color: "#be185d", border: "#fbcfe8" },
+    assignment_assessment: { label: "Assignment Assessment", bg: "#f0f9ff", color: "#0369a1", border: "#bae6fd" }
+  };
+  const b = badges[t] ?? { label: t.replaceAll("_", " "), bg: "#f8fafc", color: "#475569", border: "#e2e8f0" };
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        padding: "3px 10px",
+        borderRadius: "999px",
+        fontSize: "0.74rem",
+        fontWeight: 750,
+        background: b.bg,
+        color: b.color,
+        border: `1px solid ${b.border}`,
+        whiteSpace: "nowrap"
+      }}
+    >
+      {b.label}
+    </span>
+  );
+}
 export function Dashboard({data,role,base,name,demo,analytics}:{data:Data;role:Role;base:string;name:string;demo:boolean;analytics?:string}){
   const [filters,setFilters]=useState<Filters>({});
   const [showFilters,setShowFilters]=useState(Boolean(analytics));
   const [metric,setMetric]=useState<"Attendance"|"Assessment"|"Submissions">("Attendance");
+  const [activeStaffFilter,setActiveStaffFilter]=useState("");
   const today=dateKey(new Date(),String(list(data,"institution_settings")[0]?.timezone??"Asia/Kolkata"));
   const settings=list(data,"institution_settings")[0];
   const scoped=useMemo(()=>scope(data,filters),[data,filters]);
+  const allStaffAssignments=list(data,"staff_assignments");
+  const assignmentMap=useMemo(()=>new Map(allStaffAssignments.map(a=>[a.id,a])),[allStaffAssignments]);
+  const staffMap=useMemo(()=>new Map(list(data,"staff").map(s=>[s.id,s])),[data]);
+  const allScores=list(data,"assessment_scores");
+  const staffAssessments=useMemo(()=>{
+    return scoped.assessments
+      .filter(a=>{
+        if(!activeStaffFilter)return true;
+        const asgn=assignmentMap.get(String(a.staff_assignment_id));
+        return asgn?.staff_id===activeStaffFilter;
+      })
+      .slice()
+      .sort((a,b)=>String(b.assessment_on).localeCompare(String(a.assessment_on)));
+  },[scoped.assessments,activeStaffFilter,assignmentMap]);
   const totalAttendance=attendance(scoped.records,settings).rate;
   const latest=scope(data,{...filters,from:today,to:today});
   const work=workCompletion(data,scoped,today);
@@ -82,24 +130,131 @@ export function Dashboard({data,role,base,name,demo,analytics}:{data:Data;role:R
       </section>
       <section className="panel dashboard-panel"><div className="panel-head"><div><h2>{analytics?"Academic snapshot":"Today at a glance"}</h2><p>{analytics?"Progress in the selected scope":"Classes and work that need your attention"}</p></div><span className="feature-icon purple"><CalendarClock size={19}/></span></div>
         <div className="snapshot">{[
-          ["Scheduled classes",activeSession.length,CalendarDays,"purple","calendar"],["Completed sessions",latest.sessions.length,ClipboardCheck,"green","class-sessions"],["Pending session records",pastWithoutSession.length,ClipboardList,"amber","class-sessions"],["Overdue assignments",work.overdue,BookOpen,"blue","assignments"],["Assessment average",pct(average(marks(data,scoped.scores))),Activity,"purple","assessments"],
+          ["Scheduled classes",activeSession.length,CalendarDays,"purple","calendar"],["Completed sessions",latest.sessions.length,ClipboardCheck,"green","class-sessions"],["Pending session records",pastWithoutSession.length,ClipboardList,"amber","class-sessions"],["Overdue assignments",work.overdue,BookOpen,"blue","assignments"],["Assessment average",pct(average(marks(data,scoped.scores))),Activity,"purple",role==="admin"?"#staff-assessments":"assessments"],
           ...(role==="staff"?[["Pending assignment reviews",work.awaitingReview,ClipboardList,"blue","assignments"],["Pending marks uploads",work.pendingMarks,FileCheck2,"amber","marks"]]:[]),
         ].map(([text,value,icon,tone,url])=>{const Icon=icon as LucideIcon;return <Link href={base+"/"+url} key={String(text)}><span className={"small-icon "+tone}><Icon size={16}/></span><span>{String(text)}</span><strong>{String(value)}</strong></Link>;})}</div>
       </section>
     </div>
-    <div className="dashboard-grid">
-      <section className="panel dashboard-panel"><div className="panel-head"><div><h2>Subject performance</h2><p>Average finalized score and weighted syllabus progress</p></div></div>{bySubject.length?<div className="subject-rows">{bySubject.slice(0,8).map(row=><div key={row.name}><span>{row.name}</span><span className="progress-track"><i style={{width:(row["Average score"]??0)+"%"}}/></span><strong>{pct(row["Average score"])}</strong><small>{pct(row.Syllabus)} syllabus</small></div>)}</div>:<Empty/>}</section>
-      <section className="panel dashboard-panel"><div className="panel-head"><div><h2>Upcoming events</h2><p>Classes, deadlines, and institutional dates</p></div><Link className="text-link" href={base+"/calendar"}>Calendar</Link></div>{events.length?<div className="event-rows">{events.map(row=><div key={row.id}><span className="small-icon purple"><CalendarDays size={17}/></span><div><strong>{String(row.title)}</strong><small>{academicDateTime(row.starts_at,String(settings?.timezone??"Asia/Kolkata"))}</small></div><Status value={row.event_type}/></div>)}</div>:<Empty title="No upcoming events"/>}</section>
-    </div>
-    <div className="dashboard-grid"><section className="panel dashboard-panel">
-      <div className="panel-head"><div><h2>{role==="admin"?"Performance by cohort":"Teaching progress against target"}</h2><p>{role==="admin"?"Average finalized assessment results":"Weighted topic completion across assigned classes"}</p></div>{role==="admin"&&<select aria-label="Performance grouping" value={cohort} onChange={e=>setCohort(e.target.value as typeof cohort)}><option value="class">Class</option><option value="batch">Batch</option></select>}</div>
-      {role==="admin"?cohortMetrics.length?<div className="chart-wrap"><ResponsiveContainer width="100%" height={221} minWidth={0}><BarChart data={cohortMetrics}><CartesianGrid vertical={false} stroke="#edf0f5"/><XAxis dataKey="name" tick={{fontSize:11}}/><YAxis domain={[0,100]} tick={{fontSize:11}} tickFormatter={value=>value+"%"}/><Tooltip formatter={value=>[String(value)+"%","Average score"]}/><Bar dataKey="average" fill="#8b55eb" radius={[5,5,0,0]}/></BarChart></ResponsiveContainer></div>:<Empty title="No assessment results"/>:<div className="report-kpis"><div><span>Actual completion</span><strong>{pct(syllabusProgress(data,scoped.progress,scoped.assignments))}</strong></div><div><span>Planned completion</span><strong>{pct(planned)}</strong></div><div><span>Past target</span><strong>{delayed.length}</strong></div></div>}
-    </section>
-    <section className="panel dashboard-panel"><div className="panel-head"><div><h2>{role==="admin"?"Recent academic activity":"Syllabus deadlines"}</h2><p>{role==="admin"?"Submitted teaching records and notices":"Upcoming targets in your syllabus"}</p></div></div>
-    <div className="event-rows">{role==="admin"?scoped.sessions.slice().sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,4).map(row=><div key={row.id}><span className="small-icon purple"><ClipboardCheck size={17}/></span><div><strong>{rowName(data,"staff_assignments",row.staff_assignment_id)}</strong><small>Completed session ? {String(row.date)}</small></div></div>):scoped.progress.filter(row=>row.target_on&&String(row.target_on)>=today&&Number(row.completion)<100).sort((a,b)=>String(a.target_on).localeCompare(String(b.target_on))).slice(0,4).map(row=><div key={row.id}><span className="small-icon amber"><BookOpen size={17}/></span><div><strong>{rowName(data,"topics",row.topic_id)}</strong><small>Target {String(row.target_on)}</small></div></div>)}</div>
-    {list(data,"notifications").slice(0,1).map(row=><Link key={row.id} className="text-link" href={base+"/notifications"}>{String(row.title)}</Link>)}
-    </section></div>
+    {(role !== "admin" || Boolean(analytics)) && (
+      <>
+        <div className="dashboard-grid">
+          <section className="panel dashboard-panel"><div className="panel-head"><div><h2>Subject performance</h2><p>Average finalized score and weighted syllabus progress</p></div></div>{bySubject.length?<div className="subject-rows">{bySubject.slice(0,8).map(row=><div key={row.name}><span>{row.name}</span><span className="progress-track"><i style={{width:(row["Average score"]??0)+"%"}}/></span><strong>{pct(row["Average score"])}</strong><small>{pct(row.Syllabus)} syllabus</small></div>)}</div>:<Empty/>}</section>
+          <section className="panel dashboard-panel"><div className="panel-head"><div><h2>Upcoming events</h2><p>Classes, deadlines, and institutional dates</p></div><Link className="text-link" href={base+"/calendar"}>Calendar</Link></div>{events.length?<div className="event-rows">{events.map(row=><div key={row.id}><span className="small-icon purple"><CalendarDays size={17}/></span><div><strong>{String(row.title)}</strong><small>{academicDateTime(row.starts_at,String(settings?.timezone??"Asia/Kolkata"))}</small></div><Status value={row.event_type}/></div>)}</div>:<Empty title="No upcoming events"/>}</section>
+        </div>
+        <div className="dashboard-grid"><section className="panel dashboard-panel">
+          <div className="panel-head"><div><h2>{role==="admin"?"Performance by cohort":"Teaching progress against target"}</h2><p>{role==="admin"?"Average finalized assessment results":"Weighted topic completion across assigned classes"}</p></div>{role==="admin"&&<select aria-label="Performance grouping" value={cohort} onChange={e=>setCohort(e.target.value as typeof cohort)}><option value="class">Class</option><option value="batch">Batch</option></select>}</div>
+          {role==="admin"?cohortMetrics.length?<div className="chart-wrap"><ResponsiveContainer width="100%" height={221} minWidth={0}><BarChart data={cohortMetrics}><CartesianGrid vertical={false} stroke="#edf0f5"/><XAxis dataKey="name" tick={{fontSize:11}}/><YAxis domain={[0,100]} tick={{fontSize:11}} tickFormatter={value=>value+"%"}/><Tooltip formatter={value=>[String(value)+"%","Average score"]}/><Bar dataKey="average" fill="#8b55eb" radius={[5,5,0,0]}/></BarChart></ResponsiveContainer></div>:<Empty title="No assessment results"/>:<div className="report-kpis"><div><span>Actual completion</span><strong>{pct(syllabusProgress(data,scoped.progress,scoped.assignments))}</strong></div><div><span>Planned completion</span><strong>{pct(planned)}</strong></div><div><span>Past target</span><strong>{delayed.length}</strong></div></div>}
+        </section>
+        <section className="panel dashboard-panel"><div className="panel-head"><div><h2>{role==="admin"?"Recent academic activity":"Syllabus deadlines"}</h2><p>{role==="admin"?"Submitted teaching records and notices":"Upcoming targets in your syllabus"}</p></div></div>
+        <div className="event-rows">{role==="admin"?scoped.sessions.slice().sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,4).map(row=><div key={row.id}><span className="small-icon purple"><ClipboardCheck size={17}/></span><div><strong>{rowName(data,"staff_assignments",row.staff_assignment_id)}</strong><small>Completed session ? {String(row.date)}</small></div></div>):scoped.progress.filter(row=>row.target_on&&String(row.target_on)>=today&&Number(row.completion)<100).sort((a,b)=>String(a.target_on).localeCompare(String(b.target_on))).slice(0,4).map(row=><div key={row.id}><span className="small-icon amber"><BookOpen size={17}/></span><div><strong>{rowName(data,"topics",row.topic_id)}</strong><small>Target {String(row.target_on)}</small></div></div>)}</div>
+        {list(data,"notifications").slice(0,1).map(row=><Link key={row.id} className="text-link" href={base+"/notifications"}>{String(row.title)}</Link>)}
+        </section></div>
+      </>
+    )}
     {role==="admin"&&<section className="panel dashboard-panel support-panel"><div className="panel-head"><div><h2>Students who may benefit from support</h2><p>Based on the institution’s attendance and assessment thresholds.</p></div><Link className="button button-secondary" href={base+"/ai/student-performance"}><Sparkles size={16}/> Performance analysis</Link></div>{needsSupport.length?<div className="table-scroll"><table><thead><tr><th>Student</th><th>Attendance</th><th>Assessment</th><th>Review area</th></tr></thead><tbody>{needsSupport.slice(0,8).map(({student,rate,score,issues})=><tr key={student.id}><td><Link href={base+"/students/"+student.id} className="person-cell"><Initials name={String(student.name)}/>{String(student.name)}</Link></td><td>{pct(rate)}</td><td>{pct(score)}</td><td>{issues.join(" and ")}</td></tr>)}</tbody></table></div>:<Empty title="No threshold alerts"/>}</section>}
+    {role==="admin"&&(
+      <section id="staff-assessments" className="panel dashboard-panel" style={{marginTop:16}}>
+        <div className="panel-head" style={{alignItems:"center"}}>
+          <div>
+            <h2>Daily staff assessment activity</h2>
+            <p>Assessments conducted by teaching staff, showing assessment types, subjects, and student evaluations</p>
+          </div>
+          <div style={{display:"flex",gap:10,alignItems:"center"}}>
+            <select
+              aria-label="Filter activity by staff"
+              value={activeStaffFilter}
+              onChange={e=>setActiveStaffFilter(e.target.value)}
+              style={{fontSize:"0.82rem",padding:"6px 28px 6px 12px"}}
+            >
+              <option value="">All teaching staff</option>
+              {list(data,"staff")
+                .filter(s=>s.active!==false)
+                .map(s=>(
+                  <option key={s.id} value={s.id}>
+                    {String(s.name)}
+                  </option>
+                ))}
+            </select>
+          </div>
+        </div>
+
+        {staffAssessments.length ? (
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Staff member</th>
+                  <th>Date</th>
+                  <th>Assessment type</th>
+                  <th>Title</th>
+                  <th>Subject & Batch</th>
+                  <th>Max / Pass marks</th>
+                  <th>Evaluation status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {staffAssessments.slice(0,15).map(a=>{
+                  const asgn=assignmentMap.get(String(a.staff_assignment_id));
+                  const teacher=asgn?staffMap.get(String(asgn.staff_id)):undefined;
+                  const scores=allScores.filter(s=>s.assessment_id===a.id);
+                  const evaluated=scores.filter(s=>s.status==="evaluated"&&s.draft!==true);
+                  const avg=evaluated.length>0?Math.round(evaluated.reduce((sum,s)=>sum+Number(s.marks??0),0)/evaluated.length*10)/10:null;
+
+                  return (
+                    <tr key={a.id}>
+                      <td>
+                        {teacher ? (
+                          <Link href={base+"/staff/"+teacher.id} className="person-cell">
+                            <Initials name={String(teacher.name)}/>
+                            <strong>{String(teacher.name)}</strong>
+                          </Link>
+                        ) : (
+                          <span className="person-cell">
+                            <Initials name="Staff"/>
+                            <strong>Assigned staff</strong>
+                          </span>
+                        )}
+                      </td>
+                      <td style={{whiteSpace:"nowrap",fontSize:"0.82rem"}}>
+                        {String(a.assessment_on)}
+                      </td>
+                      <td>{assessmentBadge(a.assessment_type)}</td>
+                      <td>
+                        <strong>{String(a.title)}</strong>
+                      </td>
+                      <td>
+                        <span style={{fontSize:"0.84rem",color:"#334155"}}>
+                          {rowName(data,"subjects",asgn?.subject_id)} · <small style={{color:"#64748b"}}>{rowName(data,"batches",asgn?.batch_id)}</small>
+                        </span>
+                      </td>
+                      <td style={{fontSize:"0.82rem",whiteSpace:"nowrap"}}>
+                        <strong>{String(a.max_marks)} marks</strong>
+                        {a.pass_marks!=null&&<span style={{color:"#64748b"}}> (Pass: {String(a.pass_marks)})</span>}
+                      </td>
+                      <td>
+                        {evaluated.length>0 ? (
+                          <span style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:"0.82rem",color:"#047857",fontWeight:650}}>
+                            <span style={{width:7,height:7,borderRadius:"50%",background:"#10b981"}}/>
+                            {evaluated.length} evaluated {avg!==null?`(${avg} avg)`:""}
+                          </span>
+                        ) : (
+                          <span style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:"0.82rem",color:"#b45309",fontWeight:600}}>
+                            <span style={{width:7,height:7,borderRadius:"50%",background:"#f59e0b"}}/>
+                            Scheduled / Awaiting marks
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <Empty title="No staff assessments recorded" text="When teaching staff plan or record assessments, they will appear here as daily activity."/>
+        )}
+      </section>
+    )}
     {role==="admin"&&<div className="dashboard-grid" style={{marginTop:14}}><section className="panel dashboard-panel"><div className="panel-head"><div><h2>Planned and actual syllabus</h2><p>Scheduled targets as of {filters.to??today}</p></div></div><div className="report-kpis"><div><span>Weighted actual</span><strong>{pct(syllabusProgress(data,scoped.progress,scoped.assignments))}</strong></div><div><span>Planned target</span><strong>{pct(planned)}</strong></div><div><span>Topics past target</span><strong>{delayed.length}</strong></div></div>{summaries[0]&&<p><Sparkles size={14} style={{display:"inline",marginRight:6}}/>{summaries[0].summary}</p>}</section>
     <section className="panel dashboard-panel"><div className="panel-head"><div><h2>Institutional communications</h2><p>Recent campaigns and their current status</p></div><Link className="text-link" href={base+"/ai/communication"}>View campaigns</Link></div>{list(data,"communication_campaigns").length?<div className="event-rows">{list(data,"communication_campaigns").slice(0,4).map(row=><div key={row.id}><strong>{String(row.title)}</strong><Status value={row.status}/></div>)}</div>:<Empty title="No communications yet"/>}</section></div>}
     {demo&&<p className="demo-foot">Northview Academy is a fictional institution. All records in this workspace are demonstration data.</p>}

@@ -49,7 +49,13 @@ export const actor=cache(async()=>{
   if(error || !claims?.claims.sub) return null;
   const {data}=await client.rpc("current_actor").maybeSingle();
   const membership=data as {institution_id:string;role:Role;staff_id:string|null;display_name:string}|null;
-  return membership ? {...membership,userId:String(claims.claims.sub),client} : null;
+  const jar=await cookies();
+  const passwordUpdated=jar.get("scm-password-updated")?.value==="1";
+  const mustChangeCookie=jar.get("scm-must-change-password")?.value==="1";
+  const rawMeta=(claims.claims as Record<string,unknown>)?.user_metadata;
+  const isMetaFlagged=Boolean(rawMeta && typeof rawMeta==="object" && (rawMeta as Record<string,unknown>).must_change_password===true);
+  const mustChangePassword=!passwordUpdated && (mustChangeCookie || isMetaFlagged);
+  return membership ? {...membership,userId:String(claims.claims.sub),client,mustChangePassword} : null;
 });
 export async function apiAllowed(client:Awaited<ReturnType<typeof db>>,route:string){
   const {data,error}=await client.rpc("consume_api_quota",{p_route:route});

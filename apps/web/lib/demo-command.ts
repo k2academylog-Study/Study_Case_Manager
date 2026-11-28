@@ -12,8 +12,23 @@ export function applyDemo(current:Data,command:Command):Data{
   };
   const stamp=()=>({created_at:new Date().toISOString()});
   function save(module:string,values:Record<string,unknown>,id=crypto.randomUUID(),weeks=1){
-    const parsed=validateValues(module,values);
     const table=modules[module].table;
+    if(module==="students" && (!values.admission_number || String(values.admission_number).trim() === "")){
+      const students = rows(table);
+      let maxNum = 1000;
+      let prefix = "SCM-";
+      for (const s of students) {
+        const str = String(s.admission_number ?? "").trim();
+        const match = str.match(/^(.*?)(\d+)$/);
+        if (match) {
+          if (match[1]) prefix = match[1];
+          const num = parseInt(match[2], 10);
+          if (!isNaN(num) && num > maxNum) maxNum = num;
+        }
+      }
+      values.admission_number = `${prefix}${maxNum + 1}`;
+    }
+    const parsed=validateValues(module,values);
     const old=rows(table).find(row=>row.id===id);
     const today=dateKey();
     if(module==="students"){
@@ -46,6 +61,29 @@ export function applyDemo(current:Data,command:Command):Data{
     upsert(table,{...stamp(),...parsed,id});
   }
   if(command.operation==="save")save(command.module,command.values,command.id,command.weeks);
+  if(command.operation==="delete"){
+    const table=modules[command.module]?.table;
+    if(table && next[table]){
+      next[table]=rows(table).filter(row=>row.id!==command.id);
+    }
+    if(command.module==="chapters"){
+      const topicIds=rows("topics").filter(t=>t.chapter_id===command.id).map(t=>t.id);
+      next["topics"]=rows("topics").filter(t=>t.chapter_id!==command.id);
+      next["subtopics"]=rows("subtopics").filter(s=>!topicIds.includes(String(s.topic_id)));
+    }else if(command.module==="topics"){
+      next["subtopics"]=rows("subtopics").filter(s=>s.topic_id!==command.id);
+    }else if(command.module==="staff"){
+      const asgnIds = rows("staff_assignments").filter(a=>a.staff_id===command.id).map(a=>a.id);
+      next["staff"]=rows("staff").filter(s=>s.id!==command.id);
+      next["staff_assignments"]=rows("staff_assignments").filter(a=>a.staff_id!==command.id);
+      next["timetable_entries"]=rows("timetable_entries").filter(t=>!asgnIds.includes(String(t.staff_assignment_id)));
+      next["topic_progress"]=rows("topic_progress").filter(p=>!asgnIds.includes(String(p.staff_assignment_id)));
+      next["class_sessions"]=rows("class_sessions").filter(s=>!asgnIds.includes(String(s.staff_assignment_id)));
+      next["assessments"]=rows("assessments").filter(a=>!asgnIds.includes(String(a.staff_assignment_id)));
+      next["assignments"]=rows("assignments").filter(a=>!asgnIds.includes(String(a.staff_assignment_id)));
+      next["profiles"]=rows("profiles").filter(p=>p.staff_id!==command.id);
+    }
+  }
   if(command.operation==="import")command.rows.forEach(row=>save(command.module,row));
   if(command.operation==="invite")throw new Error("Invitations require institutional configuration.");
   if(command.operation==="work-topics"){

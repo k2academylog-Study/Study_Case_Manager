@@ -16,4 +16,7 @@ begin
   insert into public.profiles(institution_id,user_id,display_name) values(institution,administrator,'Administrator') returning id into profile;
   insert into public.user_roles(institution_id,profile_id,role) values(institution,profile,'admin');
   insert into public.classes(institution_id,name) select institution,'Class '||grade from generate_series(6,12) grade;
+  insert into public.academic_years(institution_id,name,starts_on,ends_on)
+    values(institution,to_char(current_date,'YYYY')||'-'||to_char(current_date + interval '1 year','YYYY'),current_date,current_date + interval '1 year')
+    on conflict(institution_id,name) do nothing;
 end $$;

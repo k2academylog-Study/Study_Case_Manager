@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, type Resolver } from "react-hook-form";
-import { Download, Plus, Search, Upload, UserRoundPlus, X } from "lucide-react";
+import { Check, Copy, Download, KeyRound, Plus, Search, Trash2, Upload, UserRoundPlus, X } from "lucide-react";
 import { fieldsFor, heading, label, list, modules, referenceColumns, rowName, type Data, type Field, type Item } from "@/lib/catalog";
 import type { Command } from "@/lib/command";
 import { academicDateTime, dateKey } from "@/lib/metrics";
@@ -17,42 +17,103 @@ export function Modal({title,children,close}:{title:string;children:ReactNode;cl
   useEffect(()=>{ref.current?.showModal();},[]);
   return <dialog ref={ref} className="modal" onCancel={close} onClick={e=>{if(e.target===ref.current){const r=ref.current?.getBoundingClientRect();if(r&&(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom))close();}}}><div className="panel-head"><h2>{title}</h2><button type="button" className="icon-button" aria-label="Close dialog" onClick={close}><X size={20}/></button></div>{children}</dialog>;
 }
-export function StaffInvite({staff,base,run,entry}:{staff:Item[];base:string;run:RunCommand;entry?:Item}){
-  const [open,setOpen]=useState(false);
-  const [selected,setSelected]=useState("");
+export function StaffInvite({staff,base,run,entry,autoOpen=false,onClose}:{staff:Item[];base:string;run:RunCommand;entry?:Item;autoOpen?:boolean;onClose?:()=>void}){
+  const [open,setOpen]=useState(autoOpen);
+  const [selected,setSelected]=useState(entry?.id??"");
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState("");
-  const [result,setResult]=useState<"connected"|"invited"|null>(null);
+  const [tempPassword,setTempPassword]=useState("");
+  const [recipientEmail,setRecipientEmail]=useState("");
+  const [recipientName,setRecipientName]=useState("");
+  const [copied,setCopied]=useState(false);
   const recipient=entry??staff.find(row=>row.id===selected);
   const eligible=staff.filter(row=>row.active&&row.email);
-  const live=base==="/admin";
-  async function send(){
-    if(!live||!recipient?.active||!recipient.email||busy||result)return;
-    setBusy(true);setError("");
+  const handleClose=()=>{
+    setOpen(false);
+    setTempPassword("");
+    onClose?.();
+  };
+  async function generate(){
+    if(!recipient?.active||!recipient.email||busy)return;
+    setBusy(true);setError("");setCopied(false);
     try{
-      const response=await run({operation:"invite",id:recipient.id,connectExisting:true});
-      setResult(response && typeof response==="object" && "connected" in response && response.connected===true?"connected":"invited");
+      const response=await run({operation:"invite",id:recipient.id,connectExisting:true}) as {
+        temporaryPassword?:string;
+        email?:string;
+        name?:string;
+      } | undefined;
+      if(response?.temporaryPassword){
+        setTempPassword(response.temporaryPassword);
+        setRecipientEmail(response.email || String(recipient.email));
+        setRecipientName(response.name || String(recipient.name));
+      }else{
+        setError("Could not generate credentials. Try again.");
+      }
     }catch(cause){setError((cause as Error).message);}
     finally{setBusy(false);}
   }
   return <>
-    <button type="button" className="button button-secondary" onClick={()=>{setOpen(true);setError("");setSelected("");setResult(null);}}><UserRoundPlus size={16}/> Invite staff account</button>
-    {open&&<Modal title="Invite staff account" close={()=>setOpen(false)}>
-      {!live?<><p>Sign in as an administrator to send invitations from your institution.</p><Link className="button button-primary" href="/admin/staff">Open live staff directory</Link></>:
-        result?<Notice type="success">{result==="connected"?String(recipient?.email)+" can now sign in to the staff portal with their existing account.":"Invitation sent to "+String(recipient?.email)+"."}</Notice>:
-        entry&&(!entry.active||!entry.email)?<><p>An invitation requires an active staff record with an email address.</p><Link className="button button-secondary" href={base+"/staff/"+entry.id+"/edit"}>Edit staff profile</Link></>:
-        !entry&&!eligible.length?<><p>Add an active staff member with an email address to send an invitation.</p><Link className="button button-primary" href={base+"/staff/add"}>Add staff member</Link></>:
-        <div className="panel-stack">
-          {!entry&&<label>Staff member<select value={selected} disabled={busy} onChange={e=>{setSelected(e.target.value);setError("");}}><option value="">Select a staff member</option>{eligible.map(row=><option key={row.id} value={row.id}>{String(row.name)} ({String(row.email)})</option>)}</select></label>}
-          {recipient&&<p>Grant staff access to <strong>{String(recipient.email)}</strong>? An existing verified account will be connected. New users will receive a password setup invitation.</p>}
-          {error&&<Notice type="error">{error}</Notice>}
-          <button type="button" className="button button-primary" disabled={!recipient||busy} onClick={send}>{busy?"Checking account…":"Grant staff access"}</button>
-        </div>}
+    {!autoOpen&&<button type="button" className="button button-secondary" onClick={()=>{setOpen(true);setError("");setSelected(entry?.id??"");setTempPassword("");setCopied(false);}}><KeyRound size={16}/> Staff login credentials</button>}
+    {open&&<Modal title="Staff login credentials" close={handleClose}>
+      {tempPassword?<div className="panel-stack">
+        <Notice type="success">{"Temporary password generated for " + recipientEmail}</Notice>
+        <div style={{background:"var(--surface)",border:"1px solid var(--line)",borderRadius:12,padding:16,display:"grid",gap:12}}>
+          <div>
+            <span style={{fontSize:".8rem",color:"var(--muted)",display:"block",fontWeight:600}}>Staff Member</span>
+            <strong style={{fontSize:".95rem"}}>{recipientName}</strong>
+          </div>
+          <div>
+            <span style={{fontSize:".8rem",color:"var(--muted)",display:"block",fontWeight:600}}>Staff Email (Username)</span>
+            <strong style={{fontSize:".95rem"}}>{recipientEmail}</strong>
+          </div>
+          <div>
+            <span style={{fontSize:".8rem",color:"var(--muted)",display:"block",fontWeight:600}}>Temporary Password</span>
+            <div style={{display:"flex",gap:8,alignItems:"center",marginTop:5}}>
+              <input type="text" readOnly value={tempPassword} style={{fontFamily:"monospace",fontWeight:700,letterSpacing:1,flex:1,padding:"8px 12px",borderRadius:8,border:"1px solid var(--line)",background:"#fff"}} onClick={e=>(e.target as HTMLInputElement).select()}/>
+              <button type="button" className="button button-primary" onClick={()=>{navigator.clipboard?.writeText(tempPassword);setCopied(true);setTimeout(()=>setCopied(false),2500);}}>
+                {copied?<Check size={16}/>:<Copy size={16}/>} {copied?"Copied!":"Copy"}
+              </button>
+            </div>
+          </div>
+        </div>
+        <div style={{background:"#f5f3ff",border:"1px solid #ddd6fe",borderRadius:8,padding:"10px 14px",fontSize:".85rem",color:"#5b21b6"}}>
+          <strong>First-time login requirement:</strong>
+          <p style={{margin:"4px 0 0",color:"#6d28d9",fontSize:".82rem"}}>
+            When this staff member logs in at <strong>/staff/login</strong> with this temporary password, the system will immediately require them to set their own permanent password before accessing the portal.
+          </p>
+        </div>
+        <div className="form-actions" style={{marginTop:8}}>
+          <button type="button" className="button button-secondary" onClick={handleClose}>Done</button>
+        </div>
+      </div>:
+      entry&&(!entry.active||!entry.email)?<><p>Staff credentials require an active staff record with an email address.</p><Link className="button button-secondary" href={base+"/staff/"+entry.id+"/edit"}>Edit staff profile</Link></>:
+      !entry&&!eligible.length?<><p>Add an active staff member with an email address to create their login.</p><Link className="button button-primary" href={base+"/staff/add"}>Add staff member</Link></>:
+      <div className="panel-stack">
+        {!entry&&<label>Staff member<select value={selected} disabled={busy} onChange={e=>{setSelected(e.target.value);setError("");}}><option value="">Select a staff member</option>{eligible.map(row=><option key={row.id} value={row.id}>{String(row.name)} ({String(row.email)})</option>)}</select></label>}
+        {recipient&&<p>Generate a temporary login password for <strong>{String(recipient.name)}</strong> (<code>{String(recipient.email)}</code>)?<br/><small style={{color:"var(--muted)",marginTop:6,display:"block"}}>The staff member can sign in directly at /staff/login using this temporary password and will be prompted to create their own permanent password on first login.</small></p>}
+        {error&&<Notice type="error">{error}</Notice>}
+        <button type="button" className="button button-primary" disabled={!recipient||busy} onClick={generate}><KeyRound size={16}/> {busy?"Generating…":"Generate temporary password"}</button>
+      </div>}
     </Modal>}
   </>;
 }
 const defaultChoice:Record<string,string>={academic_status:"enrolled",employment_status:"employed",status:"scheduled"};
-function defaultValues(fields:Field[],entry:Item|undefined,timezone:string){
+export function generateAdmissionNumber(data?: Data): string {
+  const students = data ? list(data, "students") : [];
+  let maxNum = 1000;
+  let prefix = "SCM-";
+  for (const s of students) {
+    const str = String(s.admission_number ?? "").trim();
+    const match = str.match(/^(.*?)(\d+)$/);
+    if (match) {
+      if (match[1]) prefix = match[1];
+      const num = parseInt(match[2], 10);
+      if (!isNaN(num) && num > maxNum) maxNum = num;
+    }
+  }
+  return `${prefix}${maxNum + 1}`;
+}
+function defaultValues(fields:Field[],entry:Item|undefined,timezone:string,data?:Data){
   return Object.fromEntries(fields.map(field=>{
     const value=entry?.[field.key];
     if(field.kind==="checkbox")return [field.key,value??["active","enabled"].includes(field.key)];
@@ -62,6 +123,14 @@ function defaultValues(fields:Field[],entry:Item|undefined,timezone:string){
     if(field.kind==="datetime" && value){
       const local=new Intl.DateTimeFormat("sv-SE",{timeZone:timezone,dateStyle:"short",timeStyle:"short",hourCycle:"h23"}).format(new Date(String(value))).replace(" ","T");
       return [field.key,local];
+    }
+    if(field.source==="academic_years" && !value && data){
+      const today=dateKey(new Date(),timezone);
+      const active=list(data,"academic_years").find(r=>String(r.starts_on)<=today && String(r.ends_on)>=today) ?? list(data,"academic_years")[0];
+      if(active)return [field.key,active.id];
+    }
+    if(field.key==="admission_number" && (!value || value==="") && (!entry || !entry.id)){
+      return [field.key, generateAdmissionNumber(data)];
     }
     return [field.key,value??(field.options?.includes(defaultChoice[field.key])?defaultChoice[field.key]:field.options?.[0])??null];
   }));
@@ -98,18 +167,30 @@ export function RecordForm({module,entry,data,run,onDone,cancel}:{module:string;
   const fields=spec.fields??[];
   const timezone=String(list(data,"institution_settings")[0]?.timezone??"Asia/Kolkata");
   const {register,handleSubmit,formState:{errors,isSubmitting},setValue,watch}=useForm<Record<string,unknown>>({
-    defaultValues:defaultValues(fields,entry,timezone),
+    defaultValues:defaultValues(fields,entry,timezone,data),
     resolver:zodResolver(fieldsFor(fields),undefined,{raw:true}) as Resolver<Record<string,unknown>>,
   });
   const [error,setError]=useState("");
+  const [confirmDelete,setConfirmDelete]=useState(false);
+  const [deleting,setDeleting]=useState(false);
   const [weeks,setWeeks]=useState(1);
   const [optionFilters,setOptionFilters]=useState<Record<string,string>>({});
+  const [generatedCredentials,setGeneratedCredentials]=useState<{email:string;password:string;name:string}|null>(null);
+  const [copied,setCopied]=useState(false);
   const id=useRef(entry?.id??"");
   async function submit(values:Record<string,unknown>){
     setError("");
     try{
       if(!id.current)id.current=crypto.randomUUID();
-      await run({operation:"save",module,id:id.current,values,create:!entry,weeks});
+      const res=await run({operation:"save",module,id:id.current,values,create:!entry,weeks}) as {temporaryPassword?:string;email?:string;name?:string}|undefined;
+      if(module==="staff"&&res?.temporaryPassword){
+        setGeneratedCredentials({
+          email:res.email || String(values.email),
+          password:res.temporaryPassword,
+          name:res.name || String(values.name || "Staff Member"),
+        });
+        return;
+      }
       onDone();
     }catch(error){setError((error as Error).message);}
   }
@@ -141,17 +222,71 @@ export function RecordForm({module,entry,data,run,onDone,cancel}:{module:string;
     }});
     return <label key={field.key} className={field.kind==="checkbox"?"checkbox-field":""}>{field.kind==="checkbox"&&<input type="checkbox" {...props}/>}<span>{field.label}{field.required&&<span aria-hidden="true"> *</span>}{field.kind==="datetime"&&<small> ({timezone})</small>}</span>
       {field.source&&list(data,field.source).length>=20&&<input aria-label={"Filter "+field.label.toLowerCase()+" options"} placeholder={"Search "+field.label.toLowerCase()+"?"} value={optionFilters[field.key]??""} onChange={e=>setOptionFilters(previous=>({...previous,[field.key]:e.target.value}))}/>}
-      {field.kind==="checkbox"?null:field.options||field.source?<select {...props} defaultValue={String(entry?.[field.key]??(field.options?.includes(defaultChoice[field.key])?defaultChoice[field.key]:field.options?.[0])??"")} onChange={event=>{
+      {field.kind==="checkbox"?null:field.options||field.source?<select {...props} defaultValue={String(entry?.[field.key]??(field.source==="academic_years"?(list(data,"academic_years").find(r=>String(r.starts_on)<=dateKey(new Date(),timezone)&&String(r.ends_on)>=dateKey(new Date(),timezone))?.id??list(data,"academic_years")[0]?.id):undefined)??(field.options?.includes(defaultChoice[field.key])?defaultChoice[field.key]:field.options?.[0])??"")} onChange={event=>{
         props.onChange(event);
         if(field.key==="staff_assignment_id"&&module==="syllabus"){setValue("topic_id",null);setValue("subtopic_id",null);}
         if(field.key==="topic_id"&&module==="syllabus")setValue("subtopic_id",null);
-      }}><option value="">{field.required?"Select "+field.label.toLowerCase():"None"}</option>{field.options?.map(option=><option key={option} value={option}>{label(option)}</option>)}{field.source&&choices(field).map(row=><option key={row.id} value={row.id}>{rowName(data,field.source!,row.id)}</option>)}</select>:
+      }}><option value="">{field.required?(choices(field).length===0?"No "+field.label.toLowerCase()+" found":"Select "+field.label.toLowerCase()):"None"}</option>{field.options?.map(option=><option key={option} value={option}>{label(option)}</option>)}{field.source&&choices(field).map(row=><option key={row.id} value={row.id}>{rowName(data,field.source!,row.id)}</option>)}</select>:
       field.kind==="textarea"?<textarea {...props}/>:<input type={field.kind==="datetime"?"datetime-local":field.kind==="phone"?"tel":field.kind??"text"} {...props} min={field.min} step="any"/>}
+      {field.key==="admission_number"&&!entry&&<small style={{color:"var(--purple-dark)",marginTop:4,display:"block",fontSize:".78rem"}}>✨ Auto-generated admission number</small>}
+      {field.source&&choices(field).length===0&&<small style={{color:"var(--purple-dark)",marginTop:4,display:"block",fontSize:".78rem"}}>No {field.label.toLowerCase()} available. <Link href={field.source==="academic_years"?"/admin/academic-years":"/admin/"+field.source.replaceAll("_","-")} style={{textDecoration:"underline",fontWeight:700}}>Add {field.label.toLowerCase()} &rarr;</Link></small>}
       {errors[field.key]&&<span className="field-error">{String(errors[field.key]?.message??"Check this value.")}</span>}
     </label>;
   })}
   {module==="timetable"&&!entry&&<label>Weekly occurrences<input type="number" min="1" max="52" value={weeks} onChange={e=>setWeeks(Number(e.target.value))}/></label>}
-  </div>{error&&<Notice type="error">{error}</Notice>}<div className="form-actions"><button className="button button-secondary" type="button" onClick={cancel}>Cancel</button><Button type="submit" disabled={isSubmitting}>{isSubmitting?"Saving…":"Save record"}</Button></div></form>;
+  </div>{error&&<Notice type="error">{error}</Notice>}<div className="form-actions">
+    {entry&&<button type="button" className="button button-secondary" style={{color:"#dc2626",borderColor:"#fecaca",marginRight:"auto"}} onClick={()=>setConfirmDelete(true)} disabled={isSubmitting||deleting}><Trash2 size={15}/> Delete {module==="staff"?"staff member":module==="students"?"student":"record"}</button>}
+    <button className="button button-secondary" type="button" onClick={cancel}>Cancel</button><Button type="submit" disabled={isSubmitting||deleting}>{isSubmitting?"Saving…":"Save record"}</Button></div>
+  {confirmDelete&&<Modal title={"Delete "+(module==="staff"?"staff member":module==="students"?"student":"record")} close={()=>setConfirmDelete(false)}>
+    <div className="delete-confirm-box">
+      <p>Are you sure you want to delete <strong>{String(entry?.name??entry?.title??"this record")}</strong>?</p>
+      {module==="staff"&&<small style={{color:"#b91c1c",display:"block",marginTop:8}}>Warning: This will permanently remove this staff member and all associated teaching assignments.</small>}
+      <div className="form-actions" style={{marginTop:20}}>
+        <button className="button button-secondary" type="button" onClick={()=>setConfirmDelete(false)} disabled={deleting}>Cancel</button>
+        <button className="button button-primary" style={{background:"#dc2626",borderColor:"#dc2626"}} disabled={deleting} onClick={async ()=>{
+          setDeleting(true);
+          try{
+            await run({operation:"delete",module,id:entry!.id});
+            onDone();
+          }catch(err){setError((err as Error).message);setDeleting(false);setConfirmDelete(false);}
+        }}>{deleting?"Deleting…":"Confirm delete"}</button>
+      </div>
+    </div>
+  </Modal>}
+  {generatedCredentials&&<Modal title="Staff credentials generated" close={onDone}>
+    <div className="panel-stack">
+      <Notice type="success">{"Temporary password generated for " + generatedCredentials.email}</Notice>
+      <div style={{background:"var(--surface)",border:"1px solid var(--line)",borderRadius:12,padding:16,display:"grid",gap:12}}>
+        <div>
+          <span style={{fontSize:".8rem",color:"var(--muted)",display:"block",fontWeight:600}}>Staff Member</span>
+          <strong style={{fontSize:".95rem"}}>{generatedCredentials.name}</strong>
+        </div>
+        <div>
+          <span style={{fontSize:".8rem",color:"var(--muted)",display:"block",fontWeight:600}}>Staff Email (Username)</span>
+          <strong style={{fontSize:".95rem"}}>{generatedCredentials.email}</strong>
+        </div>
+        <div>
+          <span style={{fontSize:".8rem",color:"var(--muted)",display:"block",fontWeight:600}}>Temporary Password</span>
+          <div style={{display:"flex",gap:8,alignItems:"center",marginTop:5}}>
+            <input type="text" readOnly value={generatedCredentials.password} style={{fontFamily:"monospace",fontWeight:700,letterSpacing:1,flex:1,padding:"8px 12px",borderRadius:8,border:"1px solid var(--line)",background:"#fff"}} onClick={e=>(e.target as HTMLInputElement).select()}/>
+            <button type="button" className="button button-primary" onClick={()=>{navigator.clipboard?.writeText(generatedCredentials.password);setCopied(true);setTimeout(()=>setCopied(false),2500);}}>
+              {copied?<Check size={16}/>:<Copy size={16}/>} {copied?"Copied!":"Copy"}
+            </button>
+          </div>
+        </div>
+      </div>
+      <div style={{background:"#f5f3ff",border:"1px solid #ddd6fe",borderRadius:8,padding:"10px 14px",fontSize:".85rem",color:"#5b21b6"}}>
+        <strong>First-time login requirement:</strong>
+        <p style={{margin:"4px 0 0",color:"#6d28d9",fontSize:".82rem"}}>
+          When this staff member logs in at <strong>/staff/login</strong> with this temporary password, the system will immediately require them to set their own permanent password before accessing the portal.
+        </p>
+      </div>
+      <div className="form-actions" style={{marginTop:8}}>
+        <button type="button" className="button button-secondary" onClick={onDone}>Done</button>
+      </div>
+    </div>
+  </Modal>}
+  </form>;
 }
 export function recordValue(data:Data,row:Item,column:string){
   const value=row[column];
@@ -178,6 +313,8 @@ export function RecordTable({data,items,columns,renderAction,person,filter=true}
 export function ModulePage({module,data,base,editable,run,create=false,openRoster,openTopics}:{module:string;data:Data;base:string;editable:boolean;run:RunCommand;create?:boolean;openRoster?:(row:Item)=>void;openTopics?:(row:Item)=>void}){
   const spec=modules[module];
   const [editing,setEditing]=useState<Item|true|null>(create&&editable?true:null);
+  const [deletingItem,setDeletingItem]=useState<Item|null>(null);
+  const [credentialsStaff,setCredentialsStaff]=useState<Item|null>(null);
   const [notice,setNotice]=useState<{error?:string;success?:string}>({});
   const [busy,setBusy]=useState(false);
   const [batch,setBatch]=useState("");
@@ -219,7 +356,28 @@ export function ModulePage({module,data,base,editable,run,create=false,openRoste
       {openTopics&&<button className="text-link" onClick={()=>openTopics(row)}>Topics</button>}
       {openRoster&&<button className="text-link" onClick={()=>openRoster(row)}>{module==="assignments"?"Submissions":module==="student-performance"?"View performance":"Enter marks"}</button>}
       {editable&&spec.fields&&(profile?<Link className="text-link" href={base+"/"+module+"/"+row.id+"/edit"}>Edit</Link>:<button className="text-link" onClick={()=>setEditing(row)}>Edit</button>)}
+      {profile&&module==="staff"&&row.email&&<button type="button" className="text-link" onClick={()=>setCredentialsStaff(row)}>Login credentials</button>}
+      {editable&&spec.fields&&<button type="button" className="text-link" style={{color:"#dc2626"}} onClick={()=>setDeletingItem(row)}>Delete</button>}
     </>:undefined}/>
+    {credentialsStaff&&<StaffInvite staff={allItems} base={base} entry={credentialsStaff} run={run} autoOpen onClose={()=>setCredentialsStaff(null)}/>}
     {editing&&<Modal title={editing===true?"Add "+spec.title.toLowerCase().replace(/s$/,""):"Edit record"} close={()=>setEditing(null)}><RecordForm module={module} entry={editing===true?undefined:editing} data={data} run={run} cancel={()=>setEditing(null)} onDone={()=>{setEditing(null);setNotice({success:"Record saved."});}}/></Modal>}
+    {deletingItem&&<Modal title={"Delete "+(module==="students"?"student":module==="staff"?"staff member":"record")} close={()=>setDeletingItem(null)}>
+      <div className="delete-confirm-box">
+        <p>Are you sure you want to delete <strong>{String(deletingItem.name??deletingItem.title??"this record")}</strong>?</p>
+        {module==="staff"&&<small style={{color:"#b91c1c",display:"block",marginTop:8}}>Warning: This will permanently remove this staff member and all associated teaching assignments.</small>}
+        {notice.error&&<div style={{marginTop:12}}><Notice type="error">{notice.error}</Notice></div>}
+        <div className="form-actions" style={{marginTop:20}}>
+          <button className="button button-secondary" type="button" onClick={()=>setDeletingItem(null)} disabled={busy}>Cancel</button>
+          <button className="button button-primary" style={{background:"#dc2626",borderColor:"#dc2626"}} disabled={busy} onClick={async ()=>{
+            setBusy(true);setNotice({});
+            try{
+              await run({operation:"delete",module,id:deletingItem.id});
+              setDeletingItem(null);
+              setNotice({success:"Record deleted successfully."});
+            }catch(err){setNotice({error:(err as Error).message});}finally{setBusy(false);}
+          }}>{busy?"Deleting…":"Confirm delete"}</button>
+        </div>
+      </div>
+    </Modal>}
   </>;
 }

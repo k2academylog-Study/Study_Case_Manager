@@ -21,6 +21,7 @@ const schema=z.discriminatedUnion("operation",[
   z.object({operation:z.literal("work-topics"),kind:z.enum(["assignments","assessments"]),parent:id,topics:z.array(id).max(250),questions:z.array(z.object({question_number:z.number().int().positive().max(1000),topic_id:id.nullable(),max_marks:z.number().finite().positive().max(1000000)})).max(60)}),
   z.object({operation:z.literal("roster"),kind:z.enum(["marks","assignments"]),parent:id,draft:z.boolean(),rows:z.array(z.object({student_id:id,status:z.string(),marks:z.number().finite().min(0).max(1_000_000).nullable(),feedback:note,question_marks:z.record(id,z.number().finite().min(0).max(1000000).nullable()).optional()})).min(1).max(2000)}),
   z.object({operation:z.literal("invite"),id,connectExisting:z.boolean().optional()}),
+  z.object({operation:z.literal("delete"),module:z.string().max(60),id}),
 ]);
 export type Command = z.infer<typeof schema>;
 export const parseCommand = (input:unknown) => schema.safeParse(input);

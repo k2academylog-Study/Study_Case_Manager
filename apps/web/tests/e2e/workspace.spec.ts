@@ -2,8 +2,8 @@ import { expect, test } from "@playwright/test";
 
 test("public navigation and restricted institutional routes",async({page})=>{
   await page.goto("/");
-  await expect(page.getByRole("heading",{name:"A clearer view of academic progress."})).toBeVisible();
-  await page.getByRole("link",{name:"Admin login",exact:true}).click();
+  await expect(page.getByRole("heading",{name:"Welcome Back"})).toBeVisible();
+  await page.getByRole("link",{name:"Login as Admin"}).click();
   await expect(page.getByRole("heading",{name:"Administrator login"})).toBeVisible();
   await page.getByRole("link",{name:"Go to staff login"}).click();
   await expect(page.getByRole("heading",{name:"Staff login",exact:true})).toBeVisible();
